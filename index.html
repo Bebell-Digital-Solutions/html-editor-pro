@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced HTML Editor</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .header {
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .editor-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .editor-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .editor {
+            flex: 1;
+            border: none;
+            resize: none;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            background-color: #f5f5f5;
+        }
+        .preview-panel {
+            flex: 2;
+            border-left: 1px solid #ccc;
+            overflow: auto;
+            padding: 10px;
+        }
+        .preview {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .button {
+            padding: 8px 12px;
+            margin-left: 5px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button.delete {
+            background-color: #f44336;
+        }
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: #f9f9f9;
+            min-width: 200px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 1;
+        }
+        .dropdown-content a {
+            color: black;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+        }
+        .dropdown-content a:hover {
+            background-color: #f1f1f1;
+        }
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+        .history-panel {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            background: white;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+        .history-item {
+            padding: 5px;
+            margin: 5px 0;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .history-item:hover {
+            background-color: #f5f5f5;
+        }
+        .tab {
+            padding: 8px 12px;
+            background-color: #555;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .tab.active {
+            background-color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <button class="tab active" id="html-tab">HTML Editor</button>
+            <div class="dropdown">
+                <button class="tab">Resources</button>
+                <div class="dropdown-content" id="resources-dropdown">
+                    <a href="#" data-url="https://www.w3schools.com">W3Schools</a>
+                    <a href="#" data-url="https://developer.mozilla.org">MDN Web Docs</a>
+                    <a href="#" data-url="https://stackoverflow.com">Stack Overflow</a>
+                    <a href="#" id="add-resource">+ Add New Resource</a>
+                </div>
+            </div>
+        </div>
+        <div>
+            <button class="button" id="show-history">History</button>
+            <button class="button delete" id="reset-editor">Reset</button>
+        </div>
+    </div>
+
+    <div class="editor-container">
+        <div class="editor-panel">
+            <textarea id="html-editor" class="editor" placeholder="Write your HTML here..."></textarea>
+        </div>
+        <div class="preview-panel">
+            <iframe id="preview" class="preview"></iframe>
+        </div>
+    </div>
+
+    <div class="history-panel" id="history-panel">
+        <h3>Saved Projects</h3>
+        <div id="history-list"></div>
+    </div>
+
+    <script>
+
+
+// Check localStorage availability
+function isLocalStorageAvailable() {
+    try {
+        const test = '__storage_test__';
+        localStorage.setItem(test, test);
+        localStorage.removeItem(test);
+        return true;
+    } catch(e) {
+        return false;
+    }
+}
+
+// Initialize with error handling
+document.addEventListener('DOMContentLoaded', function() {
+    if (!isLocalStorageAvailable()) {
+        alert('Warning: Your browser settings prevent local storage. Your work won\'t be saved between sessions.');
+        // Fallback to sessionStorage or memory-only mode
+    }
+    
+
+      
+        document.addEventListener('DOMContentLoaded', function() {
+            const editor = document.getElementById('html-editor');
+            const preview = document.getElementById('preview').contentWindow.document;
+            const resetButton = document.getElementById('reset-editor');
+            const showHistoryButton = document.getElementById('show-history');
+            const historyPanel = document.getElementById('history-panel');
+            const historyList = document.getElementById('history-list');
+            const htmlTab = document.getElementById('html-tab');
+            const resourcesDropdown = document.getElementById('resources-dropdown');
+            const addResourceButton = document.getElementById('add-resource');
+            
+            // Default HTML content
+            const defaultHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <title>My Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1 {
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <h1>Welcome to My Page</h1>
+    <p>This is a sample HTML document. Edit me!</p>
+</body>
+</html>`;
+
+            // Load saved content or default
+            const savedContent = localStorage.getItem('htmlEditorContent');
+            editor.value = savedContent || defaultHTML;
+            updatePreview();
+
+            // Auto-save and update preview
+            editor.addEventListener('input', function() {
+                localStorage.setItem('htmlEditorContent', editor.value);
+                updatePreview();
+                addToHistory(editor.value);
+            });
+
+            // Reset editor
+            resetButton.addEventListener('click', function() {
+                if (confirm('Are you sure you want to reset the editor? This cannot be undone.')) {
+                    editor.value = defaultHTML;
+                    localStorage.setItem('htmlEditorContent', editor.value);
+                    updatePreview();
+                    addToHistory(editor.value);
+                }
+            });
+
+            // Show/hide history panel
+            showHistoryButton.addEventListener('click', function() {
+                historyPanel.style.display = historyPanel.style.display === 'block' ? 'none' : 'block';
+                if (historyPanel.style.display === 'block') {
+                    loadHistory();
+                }
+            });
+
+            // Update preview function
+            function updatePreview() {
+                preview.open();
+                preview.write(editor.value);
+                preview.close();
+            }
+
+            // History functions
+            function addToHistory(content) {
+                const history = JSON.parse(localStorage.getItem('htmlEditorHistory') || [];
+                const timestamp = new Date().toISOString();
+                
+                // Don't save if same as last entry
+                if (history.length > 0 && history[0].content === content) {
+                    return;
+                }
+                
+                history.unshift({ content, timestamp });
+                localStorage.setItem('htmlEditorHistory', JSON.stringify(history.slice(0, 50))); // Keep last 50 entries
+            }
+
+            function loadHistory() {
+                const history = JSON.parse(localStorage.getItem('htmlEditorHistory') || '[]');
+                historyList.innerHTML = '';
+                
+                if (history.length === 0) {
+                    historyList.innerHTML = '<p>No history yet</p>';
+                    return;
+                }
+                
+                history.forEach((item, index) => {
+                    const historyItem = document.createElement('div');
+                    historyItem.className = 'history-item';
+                    
+                    const date = new Date(item.timestamp);
+                    const timeString = date.toLocaleString();
+                    
+                    historyItem.innerHTML = `
+                        <div><strong>${timeString}</strong></div>
+                        <div style="font-size:12px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                            ${item.content.substring(0, 50)}${item.content.length > 50 ? '...' : ''}
+                        </div>
+                    `;
+                    
+                    historyItem.addEventListener('click', function() {
+                        editor.value = item.content;
+                        updatePreview();
+                        localStorage.setItem('htmlEditorContent', item.content);
+                        historyPanel.style.display = 'none';
+                    });
+                    
+                    historyList.appendChild(historyItem);
+                });
+            }
+
+            // Resource dropdown functionality
+            resourcesDropdown.querySelectorAll('a[data-url]').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const url = this.getAttribute('data-url');
+                    editor.value = `<iframe src="${url}" style="width:100%; height:100%; border:none;"></iframe>`;
+                    updatePreview();
+                    localStorage.setItem('htmlEditorContent', editor.value);
+                    addToHistory(editor.value);
+                });
+            });
+
+            // Add new resource
+            addResourceButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const name = prompt('Enter resource name:');
+                if (!name) return;
+                
+                const url = prompt('Enter resource URL:');
+                if (!url) return;
+                
+                const newResource = document.createElement('a');
+                newResource.href = '#';
+                newResource.setAttribute('data-url', url);
+                newResource.textContent = name;
+                
+                newResource.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const url = this.getAttribute('data-url');
+                    editor.value = `<iframe src="${url}" style="width:100%; height:100%; border:none;"></iframe>`;
+                    updatePreview();
+                    localStorage.setItem('htmlEditorContent', editor.value);
+                    addToHistory(editor.value);
+                });
+                
+                resourcesDropdown.insertBefore(newResource, addResourceButton);
+                
+                // Save resources to localStorage
+                saveResources();
+            });
+
+            // Save resources to localStorage
+            function saveResources() {
+                const resources = [];
+                resourcesDropdown.querySelectorAll('a[data-url]').forEach(link => {
+                    resources.push({
+                        name: link.textContent,
+                        url: link.getAttribute('data-url')
+                    });
+                });
+                localStorage.setItem('htmlEditorResources', JSON.stringify(resources));
+            }
+
+            // Load resources from localStorage
+            function loadResources() {
+                const savedResources = JSON.parse(localStorage.getItem('htmlEditorResources'));
+                if (savedResources) {
+                    resourcesDropdown.innerHTML = '';
+                    savedResources.forEach(resource => {
+                        const link = document.createElement('a');
+                        link.href = '#';
+                        link.setAttribute('data-url', resource.url);
+                        link.textContent = resource.name;
+                        
+                        link.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            const url = this.getAttribute('data-url');
+                            editor.value = `<iframe src="${url}" style="width:100%; height:100%; border:none;"></iframe>`;
+                            updatePreview();
+                            localStorage.setItem('htmlEditorContent', editor.value);
+                            addToHistory(editor.value);
+                        });
+                        
+                        resourcesDropdown.appendChild(link);
+                    });
+                    resourcesDropdown.appendChild(addResourceButton);
+                }
+            }
+
+            // Tab functionality
+            htmlTab.addEventListener('click', function() {
+                editor.style.display = 'block';
+                document.getElementById('preview').style.display = 'block';
+            });
+
+            // Initial load
+            loadResources();
+            addToHistory(editor.value);
+        });
+    </script>
+</body>
+</html>
