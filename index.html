@@ -120,6 +120,59 @@
         .tab.active {
             background-color: #4CAF50;
         }
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 5px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .modal-footer {
+            text-align: right;
+            margin-top: 20px;
+        }
+        .modal-footer button {
+            padding: 8px 16px;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
@@ -147,7 +200,7 @@
             <textarea id="html-editor" class="editor" placeholder="Write your HTML here..."></textarea>
         </div>
         <div class="preview-panel">
-            <iframe id="preview" class="preview"></iframe>
+            <iframe id="preview" class="preview" sandbox="allow-same-origin allow-scripts"></iframe>
         </div>
     </div>
 
@@ -156,33 +209,30 @@
         <div id="history-list"></div>
     </div>
 
+    <!-- Add Resource Modal -->
+    <div id="resource-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Add New Resource</h2>
+            <div class="form-group">
+                <label for="resource-name">Resource Name:</label>
+                <input type="text" id="resource-name" placeholder="Enter resource name">
+            </div>
+            <div class="form-group">
+                <label for="resource-url">Resource URL:</label>
+                <input type="url" id="resource-url" placeholder="https://example.com">
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-resource" class="button delete">Cancel</button>
+                <button id="save-resource" class="button">Save Resource</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-
-
-// Check localStorage availability
-function isLocalStorageAvailable() {
-    try {
-        const test = '__storage_test__';
-        localStorage.setItem(test, test);
-        localStorage.removeItem(test);
-        return true;
-    } catch(e) {
-        return false;
-    }
-}
-
-// Initialize with error handling
-document.addEventListener('DOMContentLoaded', function() {
-    if (!isLocalStorageAvailable()) {
-        alert('Warning: Your browser settings prevent local storage. Your work won\'t be saved between sessions.');
-        // Fallback to sessionStorage or memory-only mode
-    }
-    
-
-      
         document.addEventListener('DOMContentLoaded', function() {
             const editor = document.getElementById('html-editor');
-            const preview = document.getElementById('preview').contentWindow.document;
+            const previewFrame = document.getElementById('preview');
             const resetButton = document.getElementById('reset-editor');
             const showHistoryButton = document.getElementById('show-history');
             const historyPanel = document.getElementById('history-panel');
@@ -190,6 +240,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const htmlTab = document.getElementById('html-tab');
             const resourcesDropdown = document.getElementById('resources-dropdown');
             const addResourceButton = document.getElementById('add-resource');
+            
+            // Modal elements
+            const resourceModal = document.getElementById('resource-modal');
+            const resourceNameInput = document.getElementById('resource-name');
+            const resourceUrlInput = document.getElementById('resource-url');
+            const saveResourceButton = document.getElementById('save-resource');
+            const cancelResourceButton = document.getElementById('cancel-resource');
+            const modalClose = document.querySelector('.close');
             
             // Default HTML content
             const defaultHTML = `<!DOCTYPE html>
@@ -244,9 +302,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Update preview function
             function updatePreview() {
-                preview.open();
-                preview.write(editor.value);
-                preview.close();
+                try {
+                    const previewDoc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+                    previewDoc.open();
+                    previewDoc.write(editor.value);
+                    previewDoc.close();
+                } catch (e) {
+                    console.error('Error updating preview:', e);
+                    // Fallback for cross-origin issues
+                    if (editor.value.includes('<iframe')) {
+                        previewFrame.srcdoc = editor.value;
+                    } else {
+                        previewFrame.srcdoc = `<html><body>${editor.value}</body></html>`;
+                    }
+                }
             }
 
             // History functions
@@ -298,46 +367,87 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Resource dropdown functionality
-            resourcesDropdown.querySelectorAll('a[data-url]').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const url = this.getAttribute('data-url');
-                    editor.value = `<iframe src="${url}" style="width:100%; height:100%; border:none;"></iframe>`;
-                    updatePreview();
-                    localStorage.setItem('htmlEditorContent', editor.value);
-                    addToHistory(editor.value);
+            function setupResourceLinks() {
+                resourcesDropdown.querySelectorAll('a[data-url]').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const url = this.getAttribute('data-url');
+                        const iframeHTML = `
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <style>
+                                    body { margin: 0; padding: 0; }
+                                    iframe { width: 100%; height: 100%; border: none; }
+                                </style>
+                            </head>
+                            <body>
+                                <iframe src="${url}" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
+                            </body>
+                            </html>
+                        `;
+                        editor.value = iframeHTML;
+                        updatePreview();
+                        localStorage.setItem('htmlEditorContent', editor.value);
+                        addToHistory(editor.value);
+                    });
                 });
-            });
+            }
+            setupResourceLinks();
+
+            // Modal functions
+            function openResourceModal() {
+                resourceNameInput.value = '';
+                resourceUrlInput.value = '';
+                resourceModal.style.display = 'block';
+            }
+
+            function closeResourceModal() {
+                resourceModal.style.display = 'none';
+            }
 
             // Add new resource
             addResourceButton.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                openResourceModal();
+            });
+
+            // Save new resource
+            saveResourceButton.addEventListener('click', function() {
+                const name = resourceNameInput.value.trim();
+                const url = resourceUrlInput.value.trim();
                 
-                const name = prompt('Enter resource name:');
-                if (!name) return;
+                if (!name || !url) {
+                    alert('Please enter both a name and URL');
+                    return;
+                }
                 
-                const url = prompt('Enter resource URL:');
-                if (!url) return;
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    alert('Please enter a valid URL starting with http:// or https://');
+                    return;
+                }
                 
                 const newResource = document.createElement('a');
                 newResource.href = '#';
                 newResource.setAttribute('data-url', url);
                 newResource.textContent = name;
                 
-                newResource.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const url = this.getAttribute('data-url');
-                    editor.value = `<iframe src="${url}" style="width:100%; height:100%; border:none;"></iframe>`;
-                    updatePreview();
-                    localStorage.setItem('htmlEditorContent', editor.value);
-                    addToHistory(editor.value);
-                });
-                
                 resourcesDropdown.insertBefore(newResource, addResourceButton);
+                setupResourceLinks();
                 
                 // Save resources to localStorage
                 saveResources();
+                closeResourceModal();
+            });
+
+            // Modal close handlers
+            modalClose.addEventListener('click', closeResourceModal);
+            cancelResourceButton.addEventListener('click', closeResourceModal);
+            window.addEventListener('click', function(event) {
+                if (event.target === resourceModal) {
+                    closeResourceModal();
+                }
             });
 
             // Save resources to localStorage
@@ -362,26 +472,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         link.href = '#';
                         link.setAttribute('data-url', resource.url);
                         link.textContent = resource.name;
-                        
-                        link.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            const url = this.getAttribute('data-url');
-                            editor.value = `<iframe src="${url}" style="width:100%; height:100%; border:none;"></iframe>`;
-                            updatePreview();
-                            localStorage.setItem('htmlEditorContent', editor.value);
-                            addToHistory(editor.value);
-                        });
-                        
                         resourcesDropdown.appendChild(link);
                     });
                     resourcesDropdown.appendChild(addResourceButton);
+                    setupResourceLinks();
                 }
             }
 
             // Tab functionality
             htmlTab.addEventListener('click', function() {
                 editor.style.display = 'block';
-                document.getElementById('preview').style.display = 'block';
+                previewFrame.style.display = 'block';
             });
 
             // Initial load
